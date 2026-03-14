@@ -1,0 +1,35 @@
+# local sqlite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# local demo artifacts / secrets / temp
+*.json
+!*.example.json
+*.png
+mfa_qr.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual env
+.venv/
+venv/
+
+# Env files (never commit secrets)
+.env
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/

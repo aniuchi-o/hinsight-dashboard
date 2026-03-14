@@ -1,0 +1,17 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_API_BASE_URL=https://hinsight-api-1046723962483.northamerica-northeast1.run.app'
+      - '--build-arg'
+      - 'VITE_API_KEY=dev-key'
+      - '--build-arg'
+      - 'VITE_DATA_REGION=CA'
+      - '-t'
+      - 'gcr.io/hinsight-486621/hinsight-frontend'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/hinsight-486621/hinsight-frontend']
+options:
+  logging: CLOUD_LOGGING_ONLY

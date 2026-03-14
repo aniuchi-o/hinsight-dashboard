@@ -1,0 +1,17 @@
+steps: 
+  - name: 'gcr.io/cloud-builders/docker' 
+    args: ['build', '-t', 'gcr.io/hinsight-486621/hinsight-api', '.'] 
+  - name: 'gcr.io/cloud-builders/docker' 
+    args: ['push', 'gcr.io/hinsight-486621/hinsight-api'] 
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk' 
+    args: 
+      - 'gcloud' 
+      - 'run' 
+      - 'deploy' 
+      - 'hinsight-api' 
+      - '--image=gcr.io/hinsight-486621/hinsight-api' 
+      - '--region=northamerica-northeast1' 
+      - '--platform=managed' 
+      - '--no-allow-unauthenticated' 
+options: 
+  logging: CLOUD_LOGGING_ONLY

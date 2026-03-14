@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base resets ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── High contrast mode ───────────────────────────────────────────────────── */
+.high-contrast .text-gray-400,
+.high-contrast .text-gray-500 {
+  color: #1a1a2e !important;
+}
+.dark.high-contrast .text-gray-400,
+.dark.high-contrast .text-gray-500 {
+  color: #f3f4f6 !important;
+}
+.high-contrast .bg-card-light,
+.high-contrast [class*="rounded-card"] {
+  border: 2px solid #4B4D6D !important;
+}
+.dark.high-contrast .bg-card-dark,
+.dark.high-contrast [class*="rounded-card"] {
+  border: 2px solid #7B7EBF !important;
+}
+
+/* ── Reduce motion mode ───────────────────────────────────────────────────── */
+.reduce-motion * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
