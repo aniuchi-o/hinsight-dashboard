@@ -1,5 +1,8 @@
 steps:
+  # ─── FRONTEND ───────────────────────────────────────────────
+  # Step 1: Build frontend Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
     args:
       - 'build'
       - '--build-arg'
@@ -13,7 +16,55 @@ steps:
       - '-f'
       - 'hinsight-dashboard-frontend/Dockerfile'
       - 'hinsight-dashboard-frontend'
+
+  # Step 2: Push frontend image to GCR
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
     args: ['push', 'gcr.io/hinsight-486621/hinsight-frontend']
+
+  # ─── BACKEND ────────────────────────────────────────────────
+  # Step 3: Build backend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/hinsight-486621/hinsight-api'
+      - '-f'
+      - 'hinsight-dashboard-backend/Dockerfile'
+      - 'hinsight-dashboard-backend'
+
+  # Step 4: Push backend image to GCR
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args: ['push', 'gcr.io/hinsight-486621/hinsight-api']
+
+  # ─── DEPLOY ─────────────────────────────────────────────────
+  # Step 5: Deploy frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    args:
+      - 'gcloud'
+      - 'run'
+      - 'deploy'
+      - 'hinsight-frontend'
+      - '--image=gcr.io/hinsight-486621/hinsight-frontend'
+      - '--region=northamerica-northeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+  # Step 6: Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    args:
+      - 'gcloud'
+      - 'run'
+      - 'deploy'
+      - 'hinsight-api'
+      - '--image=gcr.io/hinsight-486621/hinsight-api'
+      - '--region=northamerica-northeast1'
+      - '--platform=managed'
+      - '--no-allow-unauthenticated'
+
 options:
   logging: CLOUD_LOGGING_ONLY

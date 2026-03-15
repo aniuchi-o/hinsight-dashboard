@@ -1,13 +1,63 @@
-# Python virtual environment
+# ─── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# ─── Virtual environments ───────────────────────────────────────
 .venv/
 venv/
 
-# OS-specific files
+# ─── Environment / secrets (NEVER commit) ──────────────────────
+.env
+.env.local
+.env.*.local
+*.local
+
+# ─── Local databases ────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Frontend build output ──────────────────────────────────────
+hinsight-dashboard-frontend/dist/
+hinsight-dashboard-frontend/dist-ssr/
+hinsight-dashboard-frontend/node_modules/
+
+# ─── Logs ───────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Testing ────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ─── OS / editor ────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
-
-# IDE
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .vscode/settings.json
+.vscode/*
+!.vscode/extensions.json
 .idea/
+
+# ─── Misc artifacts ─────────────────────────────────────────────
+*.json
+!*.example.json
+*.png
+mfa_qr.png
