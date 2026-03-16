@@ -25,8 +25,10 @@ from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256", "argon2"], deprecated="auto")
 
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
+
 
 def seed_ingest_records(conn, tenant_id: str) -> None:
     """
@@ -238,58 +240,95 @@ def seed_alerts(conn, tenant_id: str) -> None:
     now = datetime.now(timezone.utc)
     alerts = [
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "THRESHOLD_BREACH", "severity": "CRITICAL",
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "THRESHOLD_BREACH",
+            "severity": "CRITICAL",
             "title": "Stress concerns exceed 30% workforce threshold",
             "description": "The number of employees reporting high stress levels has surpassed the configured 30% population threshold.",
-            "affected_metric": "CF_str_Count", "affected_value": 421.0,
-            "threshold_value": 374.0, "percentage_of_workforce": 33.8,
-            "related_view": "overview", "created_at": now.isoformat(), "expires_at": None,
+            "affected_metric": "CF_str_Count",
+            "affected_value": 421.0,
+            "threshold_value": 374.0,
+            "percentage_of_workforce": 33.8,
+            "related_view": "overview",
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "RISK_SPIKE", "severity": "WARNING",
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "RISK_SPIKE",
+            "severity": "WARNING",
             "title": "Cardiovascular disease risk increased by 8% since last period",
             "description": "D_CVD_risk_Count has increased by 8.2 percentage points compared to the previous 30-day rolling average.",
-            "affected_metric": "D_CVD_risk_Count", "affected_value": 143.0,
-            "threshold_value": 132.0, "percentage_of_workforce": 11.5,
-            "related_view": "lifestyle", "created_at": now.isoformat(), "expires_at": None,
+            "affected_metric": "D_CVD_risk_Count",
+            "affected_value": 143.0,
+            "threshold_value": 132.0,
+            "percentage_of_workforce": 11.5,
+            "related_view": "lifestyle",
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "IMPROVEMENT_REGRESSION", "severity": "WARNING",
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "IMPROVEMENT_REGRESSION",
+            "severity": "WARNING",
             "title": "Obesity improvement rate dropped below 25% baseline",
             "description": "The tracked improvement rate for obesity-related metrics has declined to 22%.",
-            "affected_metric": "D_obesity_improvement_rate", "affected_value": 22.0,
-            "threshold_value": 25.0, "percentage_of_workforce": None,
-            "related_view": "nutrition_obesity", "created_at": now.isoformat(), "expires_at": None,
+            "affected_metric": "D_obesity_improvement_rate",
+            "affected_value": 22.0,
+            "threshold_value": 25.0,
+            "percentage_of_workforce": None,
+            "related_view": "nutrition_obesity",
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "COHORT_SUPPRESSION", "severity": "INFORMATIONAL",
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "COHORT_SUPPRESSION",
+            "severity": "INFORMATIONAL",
             "title": "Cancer metrics suppressed - cohort below k-anonymity threshold",
             "description": "CF_CanC_Count contains fewer than 10 individuals. Suppressed per HIPAA/PHIPA k-anonymity requirements.",
-            "affected_metric": "CF_CanC_Count", "affected_value": 7.0,
-            "threshold_value": 10.0, "percentage_of_workforce": None,
-            "related_view": "overview", "created_at": now.isoformat(), "expires_at": None,
+            "affected_metric": "CF_CanC_Count",
+            "affected_value": 7.0,
+            "threshold_value": 10.0,
+            "percentage_of_workforce": None,
+            "related_view": "overview",
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "DATA_STALENESS", "severity": "INFORMATIONAL",
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "DATA_STALENESS",
+            "severity": "INFORMATIONAL",
             "title": "Feelings dashboard data is 26 hours old",
             "description": "The aggregated data for the Feelings dashboard view has not refreshed within the expected 24-hour window.",
-            "affected_metric": None, "affected_value": None,
-            "threshold_value": None, "percentage_of_workforce": None,
-            "related_view": "feelings", "created_at": now.isoformat(), "expires_at": None,
+            "affected_metric": None,
+            "affected_value": None,
+            "threshold_value": None,
+            "percentage_of_workforce": None,
+            "related_view": "feelings",
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
         # seed marker - always last
         {
-            "id": str(uuid4()), "tenant_id": tenant_id,
-            "alert_type": "seed_marker", "severity": "INFORMATIONAL",
-            "title": "seed_marker", "description": "seed_marker",
-            "affected_metric": None, "affected_value": None,
-            "threshold_value": None, "percentage_of_workforce": None,
-            "related_view": None, "created_at": now.isoformat(), "expires_at": None,
+            "id": str(uuid4()),
+            "tenant_id": tenant_id,
+            "alert_type": "seed_marker",
+            "severity": "INFORMATIONAL",
+            "title": "seed_marker",
+            "description": "seed_marker",
+            "affected_metric": None,
+            "affected_value": None,
+            "threshold_value": None,
+            "percentage_of_workforce": None,
+            "related_view": None,
+            "created_at": now.isoformat(),
+            "expires_at": None,
         },
     ]
     conn.execute(
@@ -306,6 +345,27 @@ def seed_alerts(conn, tenant_id: str) -> None:
         alerts,
     )
     print(f"[seed] inserted {len(alerts) - 1} alerts for tenant {tenant_id}")
+
+
+def alerts_table_exists(conn) -> bool:
+    """
+    Check whether the alerts table exists before attempting alert seeding.
+
+    This avoids rolling back the whole seed transaction in environments where
+    the alerts table has not been created yet.
+    """
+    return bool(
+        conn.execute(
+            text("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND table_name = 'alerts'
+                )
+            """)
+        ).scalar()
+    )
 
 
 def seed(db_url: str, region: str) -> None:
@@ -346,15 +406,17 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] tenants schema: SKIP ({e.__class__.__name__})")
-            
+
         # --- Inspect users schema (Cloud Run-safe) ---
         try:
-            ucols = conn.execute(text("""
+            ucols = conn.execute(
+                text("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns
                 WHERE table_name = 'users'
                 ORDER BY ordinal_position
-            """)).fetchall()
+            """)
+            ).fetchall()
             print("[seed] users schema:")
             for r in ucols:
                 print(f"[seed]   {r}")
@@ -363,12 +425,14 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Verify users constraints (to confirm UNIQUE email exists) ---
         try:
-            constraints = conn.execute(text("""
+            constraints = conn.execute(
+                text("""
                 SELECT conname, pg_get_constraintdef(c.oid)
                 FROM pg_constraint c
                 JOIN pg_class t ON c.conrelid = t.oid
                 WHERE t.relname = 'users'
-            """)).fetchall()
+            """)
+            ).fetchall()
 
             print("[seed] users constraints:")
             for r in constraints:
@@ -378,12 +442,14 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Inspect ingest_records schema (Cloud Run-safe) ---
         try:
-            cols = conn.execute(text("""
+            cols = conn.execute(
+                text("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns
                 WHERE table_name = 'ingest_records'
                 ORDER BY ordinal_position
-            """)).fetchall()
+            """)
+            ).fetchall()
             print("[seed] ingest_records schema:")
             for r in cols:
                 print(f"[seed]   {r}")
@@ -392,19 +458,21 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Inspect ingest_records constraints (optional but useful for ON CONFLICT) ---
         try:
-            csts = conn.execute(text("""
+            csts = conn.execute(
+                text("""
                 SELECT conname, pg_get_constraintdef(c.oid)
                 FROM pg_constraint c
                 JOIN pg_class t ON t.oid = c.conrelid
                 WHERE t.relname = 'ingest_records'
                 ORDER BY conname
-            """)).fetchall()
+            """)
+            ).fetchall()
             print("[seed] ingest_records constraints:")
             for r in csts:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] ingest_records constraints: SKIP ({e.__class__.__name__})")
-        
+
         # Optional: stop here if INSPECT_ONLY=1
         if os.getenv("INSPECT_ONLY", "") == "1":
             print("[seed] INSPECT_ONLY=1 -> exiting before inserts")
@@ -453,15 +521,14 @@ def seed(db_url: str, region: str) -> None:
         )
         print("[seed] ensured tenant demo")
 
-
-# ---- Fetch demo tenant_id (no guessing) ----
+        # ---- Fetch demo tenant_id (no guessing) ----
         tenant_id = conn.execute(
             text("SELECT id FROM tenants WHERE slug=:slug"),
             {"slug": "demo"},
         ).scalar_one()
         print(f"[seed] demo tenant_id={tenant_id}")
 
-# ---- Seed demo user (idempotent) ----
+        # ---- Seed demo user (idempotent) ----
         demo_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@demo.com").strip().lower()
         demo_password = os.getenv("DEMO_ADMIN_PASSWORD", "DemoPass123!").strip()
 
@@ -507,8 +574,13 @@ def seed(db_url: str, region: str) -> None:
 
         # ---- Seed demo dashboard dataset ----
         seed_ingest_records(conn, tenant_id)
-        seed_alerts(conn, tenant_id)
-               
+
+        # Seed alerts only if the alerts table exists in this environment.
+        if alerts_table_exists(conn):
+            seed_alerts(conn, tenant_id)
+        else:
+            print("[seed] alerts table not found -> skipping alert seeding")
+
         # ---- Verification counts (safe) ----
         def _count(table: str) -> int:
             return int(conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() or 0)
@@ -520,6 +592,7 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed] count {t}=SKIP ({e.__class__.__name__})")
 
     print("[seed] done")
+
 
 def main() -> None:
     region = os.getenv("DATA_REGION", "").strip().upper()
