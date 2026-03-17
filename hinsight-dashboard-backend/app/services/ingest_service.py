@@ -58,24 +58,24 @@ def count_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
     ).all()
 
     # Risk rules (simple demo thresholds)
-    def is_at_risk(category: str, value: float) -> bool:
-        if category == "sleep":
-            return value < 6
-        if category == "stress":
-            return value > 6
-        if category == "nutrition":
-            return value < 6
-        if category == "movement":
-            return value < 7000
-        if category == "obesity":
-            return value >= 30
-        if category == "smoke":
-            return value > 0
-        if category == "depression":
-            return value > 5
-        if category == "wellness":
-            return value < 6
-        return False
+def is_at_risk(category: str, value: float) -> bool:
+    if category == "sleep":
+        return value < 5   # stricter
+    if category == "stress":
+        return value > 8
+    if category == "nutrition":
+        return value < 4
+    if category == "movement":
+        return value < 4000
+    if category == "obesity":
+        return value >= 32
+    if category == "smoke":
+        return value > 2
+    if category == "depression":
+        return value > 7
+    if category == "wellness":
+        return value < 4
+    return False
 
     # Count distinct at-risk employees per category
     category_counts: dict[str, set] = {}
