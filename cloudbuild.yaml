@@ -64,7 +64,7 @@ steps:
       - '--image=gcr.io/hinsight-486621/hinsight-api'
       - '--region=northamerica-northeast1'
       - '--platform=managed'
-      - '--no-allow-unauthenticated'
+      - '--allow-unauthenticated'
 
 options:
   logging: CLOUD_LOGGING_ONLY

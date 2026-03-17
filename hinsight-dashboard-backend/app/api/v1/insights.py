@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.data_region import data_region_ctx
 from app.deps import get_db, get_tenant_id
 from app.security.rbac import require_scope
-from app.services.ingest_service import count_by_category
+from app.services.ingest_service import count_by_category, count_total_employees
 
 router = APIRouter(prefix="/api/v1", tags=["insights"])
 
@@ -27,8 +27,13 @@ def insights(
     db: Annotated[Session, DB_DEP],
 ) -> dict:
     _region = data_region_ctx.get()  # CA / US
+
+    # Count employees per category, not raw rows.
     counts = count_by_category(db, tenant_id=tenant_id)
-    total = sum(counts.values())
+
+    # Count total distinct employees for this tenant.
+    total = count_total_employees(db, tenant_id=tenant_id)
+
     return {
         "total_records": total,
         "by_category": counts,
