@@ -25,24 +25,31 @@ from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256", "argon2"], deprecated="auto")
 
-
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
-
 def seed_ingest_records(conn, tenant_id: str) -> None:
     """
-    Insert a realistic multi-employee demo dataset into ingest_records.
+    Insert deterministic demo data aligned to the user requirement sample.
 
-    Why this version is stronger:
-    - Seeds 241 synthetic employees instead of a single demo subject.
-    - Produces different factor prevalence per category, so overview cards do not all match.
-    - Introduces realistic overlap between related factors (for example stress + sleep).
-    - Adds 30 days of trend data so charts show change over time.
-    - Keeps the seed idempotent through a seed marker.
+    This version is intentionally strict and non-random:
+    - Uses exactly 241 employees.
+    - Uses the provided sample counts for the overview factors.
+    - Keeps all 241 employees represented in ingest_records so total_employees stays 241.
+    - Creates only one latest record per employee per category, which matches the
+      current backend aggregation logic.
+
+    Sample counts applied exactly:
+    - sleep: 10 at risk
+    - nutrition: 7 at risk
+    - smoke: 6 at risk
+    - stress: 5 at risk
+    - depression: 3 at risk
+
+    Categories not explicitly specified in the sample are seeded as non-risk only,
+    so they appear as 0 until business-approved counts are provided.
     """
 
-    # Skip if already seeded.
     marker = conn.execute(
         text("""
         SELECT 1 FROM ingest_records
@@ -58,31 +65,25 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         print("[seed] ingest_records already seeded -> skipping")
         return
 
-    # Standard library imports kept local so the rest of the file stays unchanged.
-    import random
     from datetime import timedelta
 
     now = datetime.now(timezone.utc)
-    rng = random.Random(42)  # fixed seed for repeatable demo data
+    employees = [f"emp-{i:03d}" for i in range(1, 242)]  # exactly 241 employees
 
-    # Match the UI employee count already shown on the dashboard.
-    employees = [f"emp-{i:03d}" for i in range(1, 242)]  # 241 employees
-
-    # Each category has a different prevalence target so the cards and category pages diverge.
-    # The counts below are intentionally uneven to create an executive-friendly story:
-    # stress highest, then sleep/movement, then nutrition/obesity, with smoke smaller.
-    factor_targets = {
-        "stress": 68,
-        "sleep": 54,
-        "movement": 49,
-        "nutrition": 43,
-        "obesity": 39,
-        "wellness": 34,
-        "depression": 27,
-        "smoke": 18,
+    # Exact counts from the requirement sample.
+    target_counts = {
+        "sleep": 10,
+        "nutrition": 7,
+        "smoke": 6,
+        "stress": 5,
+        "depression": 3,
+        # Business sample did not provide approved top-level counts for these yet.
+        "wellness": 0,
+        "movement": 0,
+        "obesity": 0,
     }
 
-    categories = {
+    units = {
         "sleep": "hours",
         "nutrition": "score",
         "stress": "score",
@@ -93,94 +94,92 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         "movement": "steps",
     }
 
-    # Start by selecting a distinct employee cohort for each factor.
-    cohorts = {
-        factor: set(rng.sample(employees, target))
-        for factor, target in factor_targets.items()
+    # Values aligned to the CURRENT backend risk rules.
+    # At-risk rules in backend:
+    # sleep < 6, nutrition < 6, stress > 6, depression > 5,
+    # smoke > 0, obesity >= 30, wellness < 6, movement < 7000
+    risk_values = {
+        "sleep": 5.0,
+        "nutrition": 5.0,
+        "stress": 8.0,
+        "depression": 7.0,
+        "smoke": 3.0,
+        "obesity": 32.0,
+        "wellness": 4.0,
+        "movement": 5000.0,
     }
 
-    # Add realistic overlaps between related factors.
-    # Stress and sleep problems often appear together.
-    stress_sleep_overlap = set(rng.sample(list(cohorts["stress"]), 28))
-    cohorts["sleep"].update(stress_sleep_overlap)
+    safe_values = {
+        "sleep": 7.5,
+        "nutrition": 8.0,
+        "stress": 3.0,
+        "depression": 2.0,
+        "smoke": 0.0,
+        "obesity": 24.0,
+        "wellness": 8.0,
+        "movement": 9000.0,
+    }
 
-    # Nutrition and obesity commonly correlate.
-    obesity_nutrition_overlap = set(rng.sample(list(cohorts["obesity"]), 20))
-    cohorts["nutrition"].update(obesity_nutrition_overlap)
-
-    # Low wellness and depression can overlap.
-    depression_wellness_overlap = set(rng.sample(list(cohorts["depression"]), 12))
-    cohorts["wellness"].update(depression_wellness_overlap)
-
-    # Movement risk often overlaps with obesity.
-    obesity_movement_overlap = set(rng.sample(list(cohorts["obesity"]), 16))
-    cohorts["movement"].update(obesity_movement_overlap)
+    # Deterministic employee allocation. No randomness.
+    # We intentionally use disjoint slices so the counts are exact and explainable.
+    at_risk_cohorts = {
+        "sleep": set(employees[0:10]),
+        "nutrition": set(employees[10:17]),
+        "smoke": set(employees[17:23]),
+        "stress": set(employees[23:28]),
+        "depression": set(employees[28:31]),
+        "wellness": set(),
+        "movement": set(),
+        "obesity": set(),
+    }
 
     rows = []
 
-    # Build a 30-day time series from oldest -> newest so line/bar trends make sense.
-    for day in range(30):
-        ts = (now - timedelta(days=(29 - day))).isoformat()
+    # 1) Ensure every employee exists in ingest_records at least once so total_employees = 241.
+    # We use a safe wellness baseline for everyone. This will not count as at-risk.
+    baseline_ts = (now - timedelta(days=2)).isoformat()
+    for emp in employees:
+        rows.append(
+            {
+                "source": "seed",
+                "category": "wellness",
+                "value": safe_values["wellness"],
+                "unit": units["wellness"],
+                "subject_id": emp,
+                "timestamp": baseline_ts,
+                "tenant_id": tenant_id,
+            }
+        )
 
-        for emp in employees:
-            for factor, unit in categories.items():
-                in_cohort = emp in cohorts[factor]
+    # 2) Seed exact requested factor counts using one latest record per employee/category.
+    category_order = [
+        "sleep",
+        "nutrition",
+        "smoke",
+        "stress",
+        "depression",
+        "movement",
+        "obesity",
+    ]
 
-                # The values below are chosen so the frontend can classify employees into
-                # different dashboard states while still looking realistic in charts.
-                if factor == "sleep":
-                    # Risk cohort sleeps fewer hours; slight improvement across time.
-                    value = rng.uniform(4.8, 6.1) if in_cohort else rng.uniform(6.8, 8.2)
-                    value += 0.02 * day
+    for idx, category in enumerate(category_order, start=1):
+        ts = (now - timedelta(days=1, minutes=idx)).isoformat()
 
-                elif factor == "nutrition":
-                    # Lower score means poorer nutrition; slight improvement over time.
-                    value = rng.uniform(3.8, 5.8) if in_cohort else rng.uniform(6.2, 8.7)
-                    value += 0.015 * day
+        # Add at-risk rows only for the exact approved employees in this factor.
+        for emp in at_risk_cohorts.get(category, set()):
+            rows.append(
+                {
+                    "source": "seed",
+                    "category": category,
+                    "value": risk_values[category],
+                    "unit": units[category],
+                    "subject_id": emp,
+                    "timestamp": ts,
+                    "tenant_id": tenant_id,
+                }
+            )
 
-                elif factor == "stress":
-                    # High score is bad here; interventions reduce the average slightly.
-                    value = rng.uniform(7.2, 9.4) if in_cohort else rng.uniform(2.4, 5.7)
-                    value -= 0.03 * day
-
-                elif factor == "depression":
-                    # High score is bad; slight improvement over time.
-                    value = rng.uniform(6.0, 8.3) if in_cohort else rng.uniform(1.8, 4.7)
-                    value -= 0.015 * day
-
-                elif factor == "smoke":
-                    # Smokers show materially higher daily consumption and gradual reduction.
-                    value = rng.uniform(6.0, 15.0) if in_cohort else rng.uniform(0.0, 1.0)
-                    value -= 0.05 * day
-
-                elif factor == "obesity":
-                    # BMI higher in at-risk cohort; very small improvement over time.
-                    value = rng.uniform(30.5, 37.5) if in_cohort else rng.uniform(21.0, 27.5)
-                    value -= 0.03 * day
-
-                elif factor == "wellness":
-                    # Lower wellness score for the affected cohort; gradual recovery trend.
-                    value = rng.uniform(3.8, 5.8) if in_cohort else rng.uniform(6.5, 8.8)
-                    value += 0.02 * day
-
-                elif factor == "movement":
-                    # At-risk cohort has lower daily steps; steps rise over time.
-                    value = rng.uniform(2500, 5200) if in_cohort else rng.uniform(7000, 11000)
-                    value += 35 * day
-
-                rows.append(
-                    {
-                        "source": "seed",
-                        "category": factor,
-                        "value": round(float(value), 2),
-                        "unit": unit,
-                        "subject_id": emp,
-                        "timestamp": ts,
-                        "tenant_id": tenant_id,
-                    }
-                )
-
-    # Insert seed marker after building the rows.
+    # 3) Insert seed marker last.
     conn.execute(
         text("""
         INSERT INTO ingest_records
@@ -201,7 +200,9 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         rows,
     )
 
+    summary = {category: len(at_risk_cohorts.get(category, set())) for category in category_order}
     print(f"[seed] inserted ingest_records rows={len(rows)} for employees={len(employees)}")
+    print(f"[seed] exact factor counts={summary}")
 
 
 def seed_platform_admin(conn, platform_tenant_id: str) -> None:
@@ -240,95 +241,58 @@ def seed_alerts(conn, tenant_id: str) -> None:
     now = datetime.now(timezone.utc)
     alerts = [
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "THRESHOLD_BREACH",
-            "severity": "CRITICAL",
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "THRESHOLD_BREACH", "severity": "CRITICAL",
             "title": "Stress concerns exceed 30% workforce threshold",
             "description": "The number of employees reporting high stress levels has surpassed the configured 30% population threshold.",
-            "affected_metric": "CF_str_Count",
-            "affected_value": 421.0,
-            "threshold_value": 374.0,
-            "percentage_of_workforce": 33.8,
-            "related_view": "overview",
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "affected_metric": "CF_str_Count", "affected_value": 421.0,
+            "threshold_value": 374.0, "percentage_of_workforce": 33.8,
+            "related_view": "overview", "created_at": now.isoformat(), "expires_at": None,
         },
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "RISK_SPIKE",
-            "severity": "WARNING",
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "RISK_SPIKE", "severity": "WARNING",
             "title": "Cardiovascular disease risk increased by 8% since last period",
             "description": "D_CVD_risk_Count has increased by 8.2 percentage points compared to the previous 30-day rolling average.",
-            "affected_metric": "D_CVD_risk_Count",
-            "affected_value": 143.0,
-            "threshold_value": 132.0,
-            "percentage_of_workforce": 11.5,
-            "related_view": "lifestyle",
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "affected_metric": "D_CVD_risk_Count", "affected_value": 143.0,
+            "threshold_value": 132.0, "percentage_of_workforce": 11.5,
+            "related_view": "lifestyle", "created_at": now.isoformat(), "expires_at": None,
         },
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "IMPROVEMENT_REGRESSION",
-            "severity": "WARNING",
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "IMPROVEMENT_REGRESSION", "severity": "WARNING",
             "title": "Obesity improvement rate dropped below 25% baseline",
             "description": "The tracked improvement rate for obesity-related metrics has declined to 22%.",
-            "affected_metric": "D_obesity_improvement_rate",
-            "affected_value": 22.0,
-            "threshold_value": 25.0,
-            "percentage_of_workforce": None,
-            "related_view": "nutrition_obesity",
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "affected_metric": "D_obesity_improvement_rate", "affected_value": 22.0,
+            "threshold_value": 25.0, "percentage_of_workforce": None,
+            "related_view": "nutrition_obesity", "created_at": now.isoformat(), "expires_at": None,
         },
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "COHORT_SUPPRESSION",
-            "severity": "INFORMATIONAL",
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "COHORT_SUPPRESSION", "severity": "INFORMATIONAL",
             "title": "Cancer metrics suppressed - cohort below k-anonymity threshold",
             "description": "CF_CanC_Count contains fewer than 10 individuals. Suppressed per HIPAA/PHIPA k-anonymity requirements.",
-            "affected_metric": "CF_CanC_Count",
-            "affected_value": 7.0,
-            "threshold_value": 10.0,
-            "percentage_of_workforce": None,
-            "related_view": "overview",
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "affected_metric": "CF_CanC_Count", "affected_value": 7.0,
+            "threshold_value": 10.0, "percentage_of_workforce": None,
+            "related_view": "overview", "created_at": now.isoformat(), "expires_at": None,
         },
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "DATA_STALENESS",
-            "severity": "INFORMATIONAL",
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "DATA_STALENESS", "severity": "INFORMATIONAL",
             "title": "Feelings dashboard data is 26 hours old",
             "description": "The aggregated data for the Feelings dashboard view has not refreshed within the expected 24-hour window.",
-            "affected_metric": None,
-            "affected_value": None,
-            "threshold_value": None,
-            "percentage_of_workforce": None,
-            "related_view": "feelings",
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "affected_metric": None, "affected_value": None,
+            "threshold_value": None, "percentage_of_workforce": None,
+            "related_view": "feelings", "created_at": now.isoformat(), "expires_at": None,
         },
         # seed marker - always last
         {
-            "id": str(uuid4()),
-            "tenant_id": tenant_id,
-            "alert_type": "seed_marker",
-            "severity": "INFORMATIONAL",
-            "title": "seed_marker",
-            "description": "seed_marker",
-            "affected_metric": None,
-            "affected_value": None,
-            "threshold_value": None,
-            "percentage_of_workforce": None,
-            "related_view": None,
-            "created_at": now.isoformat(),
-            "expires_at": None,
+            "id": str(uuid4()), "tenant_id": tenant_id,
+            "alert_type": "seed_marker", "severity": "INFORMATIONAL",
+            "title": "seed_marker", "description": "seed_marker",
+            "affected_metric": None, "affected_value": None,
+            "threshold_value": None, "percentage_of_workforce": None,
+            "related_view": None, "created_at": now.isoformat(), "expires_at": None,
         },
     ]
     conn.execute(
@@ -347,13 +311,10 @@ def seed_alerts(conn, tenant_id: str) -> None:
     print(f"[seed] inserted {len(alerts) - 1} alerts for tenant {tenant_id}")
 
 
-def alerts_table_exists(conn) -> bool:
-    """
-    Check whether the alerts table exists before attempting alert seeding.
 
-    This avoids rolling back the whole seed transaction in environments where
-    the alerts table has not been created yet.
-    """
+
+def alerts_table_exists(conn) -> bool:
+    """Return True only when the alerts table exists in the current database."""
     return bool(
         conn.execute(
             text("""
@@ -406,17 +367,15 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] tenants schema: SKIP ({e.__class__.__name__})")
-
+            
         # --- Inspect users schema (Cloud Run-safe) ---
         try:
-            ucols = conn.execute(
-                text("""
+            ucols = conn.execute(text("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns
                 WHERE table_name = 'users'
                 ORDER BY ordinal_position
-            """)
-            ).fetchall()
+            """)).fetchall()
             print("[seed] users schema:")
             for r in ucols:
                 print(f"[seed]   {r}")
@@ -425,14 +384,12 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Verify users constraints (to confirm UNIQUE email exists) ---
         try:
-            constraints = conn.execute(
-                text("""
+            constraints = conn.execute(text("""
                 SELECT conname, pg_get_constraintdef(c.oid)
                 FROM pg_constraint c
                 JOIN pg_class t ON c.conrelid = t.oid
                 WHERE t.relname = 'users'
-            """)
-            ).fetchall()
+            """)).fetchall()
 
             print("[seed] users constraints:")
             for r in constraints:
@@ -442,14 +399,12 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Inspect ingest_records schema (Cloud Run-safe) ---
         try:
-            cols = conn.execute(
-                text("""
+            cols = conn.execute(text("""
                 SELECT column_name, data_type, is_nullable, column_default
                 FROM information_schema.columns
                 WHERE table_name = 'ingest_records'
                 ORDER BY ordinal_position
-            """)
-            ).fetchall()
+            """)).fetchall()
             print("[seed] ingest_records schema:")
             for r in cols:
                 print(f"[seed]   {r}")
@@ -458,21 +413,19 @@ def seed(db_url: str, region: str) -> None:
 
         # --- Inspect ingest_records constraints (optional but useful for ON CONFLICT) ---
         try:
-            csts = conn.execute(
-                text("""
+            csts = conn.execute(text("""
                 SELECT conname, pg_get_constraintdef(c.oid)
                 FROM pg_constraint c
                 JOIN pg_class t ON t.oid = c.conrelid
                 WHERE t.relname = 'ingest_records'
                 ORDER BY conname
-            """)
-            ).fetchall()
+            """)).fetchall()
             print("[seed] ingest_records constraints:")
             for r in csts:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] ingest_records constraints: SKIP ({e.__class__.__name__})")
-
+        
         # Optional: stop here if INSPECT_ONLY=1
         if os.getenv("INSPECT_ONLY", "") == "1":
             print("[seed] INSPECT_ONLY=1 -> exiting before inserts")
@@ -521,14 +474,15 @@ def seed(db_url: str, region: str) -> None:
         )
         print("[seed] ensured tenant demo")
 
-        # ---- Fetch demo tenant_id (no guessing) ----
+
+# ---- Fetch demo tenant_id (no guessing) ----
         tenant_id = conn.execute(
             text("SELECT id FROM tenants WHERE slug=:slug"),
             {"slug": "demo"},
         ).scalar_one()
         print(f"[seed] demo tenant_id={tenant_id}")
 
-        # ---- Seed demo user (idempotent) ----
+# ---- Seed demo user (idempotent) ----
         demo_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@demo.com").strip().lower()
         demo_password = os.getenv("DEMO_ADMIN_PASSWORD", "DemoPass123!").strip()
 
@@ -580,7 +534,7 @@ def seed(db_url: str, region: str) -> None:
             seed_alerts(conn, tenant_id)
         else:
             print("[seed] alerts table not found -> skipping alert seeding")
-
+               
         # ---- Verification counts (safe) ----
         def _count(table: str) -> int:
             return int(conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() or 0)
@@ -592,7 +546,6 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed] count {t}=SKIP ({e.__class__.__name__})")
 
     print("[seed] done")
-
 
 def main() -> None:
     region = os.getenv("DATA_REGION", "").strip().upper()
