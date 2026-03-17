@@ -14,7 +14,6 @@ from app.services.ingest_service import count_by_category, count_total_employees
 
 router = APIRouter(prefix="/api/v1", tags=["insights"])
 
-# Ruff B008-safe singletons
 DB_DEP = Depends(get_db)
 INSIGHTS_READ_DEP = require_scope("insights:read")
 TENANT_DEP = Depends(get_tenant_id)
@@ -26,16 +25,13 @@ def insights(
     tenant_id: Annotated[str, TENANT_DEP],
     db: Annotated[Session, DB_DEP],
 ) -> dict:
-    _region = data_region_ctx.get()  # CA / US
+    _region = data_region_ctx.get()
 
-    # Count employees per category, not raw rows.
     counts = count_by_category(db, tenant_id=tenant_id)
-
-    # Count total distinct employees for this tenant.
     total = count_total_employees(db, tenant_id=tenant_id)
 
     return {
-        "total_records": total,
+        "total_employees": total,
         "by_category": counts,
         "last_updated_at": datetime.now(timezone.utc).isoformat(),
     }
