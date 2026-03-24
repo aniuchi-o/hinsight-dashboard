@@ -1,4 +1,5 @@
 # app/services/ingest_service.py
+# app/services/ingest_service.py
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -58,24 +59,24 @@ def count_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
     ).all()
 
     # Risk rules (simple demo thresholds)
-def is_at_risk(category: str, value: float) -> bool:
-    if category == "sleep":
-        return value < 5   # stricter
-    if category == "stress":
-        return value > 8
-    if category == "nutrition":
-        return value < 4
-    if category == "movement":
-        return value < 4000
-    if category == "obesity":
-        return value >= 32
-    if category == "smoke":
-        return value > 2
-    if category == "depression":
-        return value > 7
-    if category == "wellness":
-        return value < 4
-    return False
+    def is_at_risk(category: str, value: float) -> bool:
+        if category == "sleep":
+            return value < 5   # stricter
+        if category == "stress":
+            return value > 8
+        if category == "nutrition":
+            return value < 4
+        if category == "movement":
+            return value < 4000
+        if category == "obesity":
+            return value >= 32
+        if category == "smoke":
+            return value > 2
+        if category == "depression":
+            return value > 7
+        if category == "wellness":
+            return value < 4
+        return False
 
     # Count distinct at-risk employees per category
     category_counts: dict[str, set] = {}
@@ -85,3 +86,21 @@ def is_at_risk(category: str, value: float) -> bool:
             category_counts.setdefault(record.category, set()).add(record.subject_id)
 
     return {k: len(v) for k, v in category_counts.items()}
+
+
+def ingest_record(db: Session, payload, *, tenant_id: str) -> IngestRecord:
+    """
+    Persist a single ingest payload to the database.
+    Called by POST /api/v1/ingest.
+    """
+    record = IngestRecord(
+        tenant_id=tenant_id,
+        subject_id=payload.subject_id,
+        category=payload.category,
+        value=payload.value,
+        timestamp=payload.timestamp,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
