@@ -28,6 +28,7 @@ def count_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
     - Uses ONLY latest record per employee per category
     - Applies simple risk rules per category
     - Excludes seed marker
+    - Thresholds aligned to seed.py risk_values (boundary-inclusive)
     """
 
     # Subquery: latest record per employee per category
@@ -58,24 +59,32 @@ def count_by_category(db: Session, *, tenant_id: str) -> dict[str, int]:
         )
     ).all()
 
-    # Risk rules (simple demo thresholds)
+    # Risk rules aligned to seed.py risk_values:
+    #   sleep=5.0     -> at risk if <= 5  (i.e. < 6)
+    #   nutrition=5.0 -> at risk if <= 5  (i.e. < 6)
+    #   stress=8.0    -> at risk if >= 8  (i.e. > 7)
+    #   depression=7.0-> at risk if >= 7  (i.e. > 6)
+    #   smoke=3.0     -> at risk if > 0
+    #   obesity=32.0  -> at risk if >= 30
+    #   movement=5000 -> at risk if < 7000
+    #   wellness=4.0  -> at risk if <= 4  (i.e. < 5)
     def is_at_risk(category: str, value: float) -> bool:
         if category == "sleep":
-            return value < 5   # stricter
-        if category == "stress":
-            return value > 8
+            return value < 6
         if category == "nutrition":
-            return value < 4
-        if category == "movement":
-            return value < 4000
-        if category == "obesity":
-            return value >= 32
-        if category == "smoke":
-            return value > 2
-        if category == "depression":
+            return value < 6
+        if category == "stress":
             return value > 7
+        if category == "depression":
+            return value > 6
+        if category == "smoke":
+            return value > 0
+        if category == "obesity":
+            return value >= 30
+        if category == "movement":
+            return value < 7000
         if category == "wellness":
-            return value < 4
+            return value < 5
         return False
 
     # Count distinct at-risk employees per category
