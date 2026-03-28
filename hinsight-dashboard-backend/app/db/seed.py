@@ -38,13 +38,22 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
     - Keeps all 241 employees represented in ingest_records so total_employees stays 241.
     - Creates only one latest record per employee per category, which matches the
       current backend aggregation logic.
+    - Creates a previous-period cohort (~30 days ago) so percentage change is
+      calculable (avoids Infinity% on all cards).
 
-    Sample counts applied exactly:
+    Current period counts (applied exactly):
     - sleep: 10 at risk
     - nutrition: 7 at risk
     - smoke: 6 at risk
     - stress: 5 at risk
     - depression: 3 at risk
+
+    Previous period counts (slightly lower to show positive trend):
+    - sleep: 8 at risk
+    - nutrition: 5 at risk
+    - smoke: 5 at risk
+    - stress: 4 at risk
+    - depression: 2 at risk
 
     Categories not explicitly specified in the sample are seeded as non-risk only,
     so they appear as 0 until business-approved counts are provided.
@@ -70,19 +79,6 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
     now = datetime.now(timezone.utc)
     employees = [f"emp-{i:03d}" for i in range(1, 242)]  # exactly 241 employees
 
-    # Exact counts from the requirement sample.
-    target_counts = {
-        "sleep": 10,
-        "nutrition": 7,
-        "smoke": 6,
-        "stress": 5,
-        "depression": 3,
-        # Business sample did not provide approved top-level counts for these yet.
-        "wellness": 0,
-        "movement": 0,
-        "obesity": 0,
-    }
-
     units = {
         "sleep": "hours",
         "nutrition": "score",
@@ -94,10 +90,9 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         "movement": "steps",
     }
 
-    # Values aligned to the CURRENT backend risk rules.
-    # At-risk rules in backend:
-    # sleep < 6, nutrition < 6, stress > 6, depression > 5,
-    # smoke > 0, obesity >= 30, wellness < 6, movement < 7000
+    # Values aligned to the backend risk rules in ingest_service.py:
+    # sleep < 6, nutrition < 6, stress > 7, depression > 6,
+    # smoke > 0, obesity >= 30, wellness < 5, movement < 7000
     risk_values = {
         "sleep": 5.0,
         "nutrition": 5.0,
@@ -120,23 +115,53 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         "movement": 9000.0,
     }
 
-    # Deterministic employee allocation. No randomness.
-    # We intentionally use disjoint slices so the counts are exact and explainable.
+    # ------------------------------------------------------------------ #
+    # Current period: deterministic disjoint employee allocation.         #
+    # ------------------------------------------------------------------ #
     at_risk_cohorts = {
-        "sleep": set(employees[0:10]),
-        "nutrition": set(employees[10:17]),
-        "smoke": set(employees[17:23]),
-        "stress": set(employees[23:28]),
+        "sleep":      set(employees[0:10]),
+        "nutrition":  set(employees[10:17]),
+        "smoke":      set(employees[17:23]),
+        "stress":     set(employees[23:28]),
         "depression": set(employees[28:31]),
-        "wellness": set(),
-        "movement": set(),
-        "obesity": set(),
+        "wellness":   set(),
+        "movement":   set(),
+        "obesity":    set(),
     }
+
+    # ------------------------------------------------------------------ #
+    # Previous period: slightly smaller counts so % change is meaningful  #
+    # and finite (avoids Infinity%).                                       #
+    # Uses the same employee slice starts so the cohort overlap is         #
+    # realistic (same employees, fewer of them).                           #
+    # ------------------------------------------------------------------ #
+    prev_at_risk_cohorts = {
+        "sleep":      set(employees[0:8]),
+        "nutrition":  set(employees[10:15]),
+        "smoke":      set(employees[17:22]),
+        "stress":     set(employees[23:27]),
+        "depression": set(employees[28:30]),
+        "wellness":   set(),
+        "movement":   set(),
+        "obesity":    set(),
+    }
+
+    category_order = [
+        "sleep",
+        "nutrition",
+        "smoke",
+        "stress",
+        "depression",
+        "movement",
+        "obesity",
+    ]
 
     rows = []
 
-    # 1) Ensure every employee exists in ingest_records at least once so total_employees = 241.
-    # We use a safe wellness baseline for everyone. This will not count as at-risk.
+    # ------------------------------------------------------------------ #
+    # 1) Baseline: every employee gets a safe wellness row (~2 days ago)  #
+    #    so total_employees COUNT(DISTINCT subject_id) = 241.             #
+    # ------------------------------------------------------------------ #
     baseline_ts = (now - timedelta(days=2)).isoformat()
     for emp in employees:
         rows.append(
@@ -151,21 +176,11 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
             }
         )
 
-    # 2) Seed exact requested factor counts using one latest record per employee/category.
-    category_order = [
-        "sleep",
-        "nutrition",
-        "smoke",
-        "stress",
-        "depression",
-        "movement",
-        "obesity",
-    ]
-
+    # ------------------------------------------------------------------ #
+    # 2) Current period at-risk rows (~1 day ago, one per employee/cat).  #
+    # ------------------------------------------------------------------ #
     for idx, category in enumerate(category_order, start=1):
         ts = (now - timedelta(days=1, minutes=idx)).isoformat()
-
-        # Add at-risk rows only for the exact approved employees in this factor.
         for emp in at_risk_cohorts.get(category, set()):
             rows.append(
                 {
@@ -179,17 +194,31 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
                 }
             )
 
-    # 3) Insert seed marker last.
-    conn.execute(
-        text("""
-        INSERT INTO ingest_records
-        (source, category, value, unit, subject_id, timestamp, tenant_id)
-        VALUES
-        ('seed','seed_marker',1,'marker','seed',:ts,:tid)
-        """),
-        {"ts": now.isoformat(), "tid": tenant_id},
-    )
+    # ------------------------------------------------------------------ #
+    # 3) Previous period at-risk rows (~30 days ago).                     #
+    #    Provides a non-zero denominator for % change calculation.        #
+    # ------------------------------------------------------------------ #
+    prev_ts_base = now - timedelta(days=30)
+    for idx, category in enumerate(category_order, start=1):
+        prev_ts = (prev_ts_base - timedelta(minutes=idx)).isoformat()
+        for emp in prev_at_risk_cohorts.get(category, set()):
+            rows.append(
+                {
+                    "source": "seed",
+                    "category": category,
+                    "value": risk_values[category],
+                    "unit": units[category],
+                    "subject_id": emp,
+                    "timestamp": prev_ts,
+                    "tenant_id": tenant_id,
+                }
+            )
 
+    # ------------------------------------------------------------------ #
+    # 4) Insert data rows FIRST, then marker LAST.                        #
+    #    This ensures a failed bulk insert cannot leave an orphaned        #
+    #    marker that blocks all future re-seeds.                          #
+    # ------------------------------------------------------------------ #
     conn.execute(
         text("""
         INSERT INTO ingest_records
@@ -200,9 +229,21 @@ def seed_ingest_records(conn, tenant_id: str) -> None:
         rows,
     )
 
+    conn.execute(
+        text("""
+        INSERT INTO ingest_records
+        (source, category, value, unit, subject_id, timestamp, tenant_id)
+        VALUES
+        ('seed','seed_marker',1,'marker','seed',:ts,:tid)
+        """),
+        {"ts": now.isoformat(), "tid": tenant_id},
+    )
+
     summary = {category: len(at_risk_cohorts.get(category, set())) for category in category_order}
+    prev_summary = {category: len(prev_at_risk_cohorts.get(category, set())) for category in category_order}
     print(f"[seed] inserted ingest_records rows={len(rows)} for employees={len(employees)}")
-    print(f"[seed] exact factor counts={summary}")
+    print(f"[seed] current period counts={summary}")
+    print(f"[seed] previous period counts={prev_summary}")
 
 
 def seed_platform_admin(conn, platform_tenant_id: str) -> None:
@@ -311,8 +352,6 @@ def seed_alerts(conn, tenant_id: str) -> None:
     print(f"[seed] inserted {len(alerts) - 1} alerts for tenant {tenant_id}")
 
 
-
-
 def alerts_table_exists(conn) -> bool:
     """Return True only when the alerts table exists in the current database."""
     return bool(
@@ -367,7 +406,7 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] tenants schema: SKIP ({e.__class__.__name__})")
-            
+
         # --- Inspect users schema (Cloud Run-safe) ---
         try:
             ucols = conn.execute(text("""
@@ -425,7 +464,7 @@ def seed(db_url: str, region: str) -> None:
                 print(f"[seed]   {r}")
         except Exception as e:
             print(f"[seed] ingest_records constraints: SKIP ({e.__class__.__name__})")
-        
+
         # Optional: stop here if INSPECT_ONLY=1
         if os.getenv("INSPECT_ONLY", "") == "1":
             print("[seed] INSPECT_ONLY=1 -> exiting before inserts")
@@ -453,9 +492,7 @@ def seed(db_url: str, region: str) -> None:
 
         seed_platform_admin(conn, platform_tenant_id)
 
-        # ---- Seed tenant (idempotent) ----
-        # Your tenants table requires BOTH id and data_region (both NOT NULL),
-        # so we provide them explicitly.
+        # ---- Seed demo tenant (idempotent) ----
         conn.execute(
             text(
                 """
@@ -474,15 +511,14 @@ def seed(db_url: str, region: str) -> None:
         )
         print("[seed] ensured tenant demo")
 
-
-# ---- Fetch demo tenant_id (no guessing) ----
+        # ---- Fetch demo tenant_id (no guessing) ----
         tenant_id = conn.execute(
             text("SELECT id FROM tenants WHERE slug=:slug"),
             {"slug": "demo"},
         ).scalar_one()
         print(f"[seed] demo tenant_id={tenant_id}")
 
-# ---- Seed demo user (idempotent) ----
+        # ---- Seed demo user (idempotent) ----
         demo_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@demo.com").strip().lower()
         demo_password = os.getenv("DEMO_ADMIN_PASSWORD", "DemoPass123!").strip()
 
@@ -524,8 +560,6 @@ def seed(db_url: str, region: str) -> None:
         )
         print(f"[seed] ensured viewer user {viewer_email}")
 
-        print(f"[seed] ensured demo user {demo_email}")
-
         # ---- Seed demo dashboard dataset ----
         seed_ingest_records(conn, tenant_id)
 
@@ -534,7 +568,7 @@ def seed(db_url: str, region: str) -> None:
             seed_alerts(conn, tenant_id)
         else:
             print("[seed] alerts table not found -> skipping alert seeding")
-               
+
         # ---- Verification counts (safe) ----
         def _count(table: str) -> int:
             return int(conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() or 0)

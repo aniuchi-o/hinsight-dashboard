@@ -2,8 +2,6 @@
  * insightsTransformer.ts
  *
  * Maps the raw /api/v1/insights response → IDashboardViewData.
- * Skeleton implementation — exact field mappings will be finalized once
- * the backend RBAC grants access to the insights endpoint.
  */
 import type {
     IDashboardViewData,
@@ -36,12 +34,14 @@ function getCategoryCount(byCategory: Record<string, number>, factor: FactorKey)
 
 /**
  * Best-effort transform of the raw insights payload.
- * The backend schema is `additionalProperties: true`, so we
- * map known fields and provide safe defaults for missing ones.
+ * The backend returns:
+ *   { total_employees: number, by_category: Record<string, number>, last_updated_at: string }
  */
 export function transformInsightsResponse(raw: any): IDashboardViewData {
     const byCategory = (raw?.by_category ?? {}) as Record<string, number>;
-    const totalRecords = Number(raw?.total_records ?? 0);
+
+    // FIX: backend field is `total_employees`, not `total_records`
+    const totalEmployees = Number(raw?.total_employees ?? 0);
 
     const wellbeing: IContributingFactorCounts = {
         sleep: 0, depression: 0, smoke: 0, stress: 0,
@@ -50,7 +50,7 @@ export function transformInsightsResponse(raw: any): IDashboardViewData {
     for (const f of factorKeys) wellbeing[f] = getCategoryCount(byCategory, f);
 
     const kpis: IKPIMetrics = {
-        totalEmployees: totalRecords,
+        totalEmployees,
         sleepCount: wellbeing.sleep,
         nutritionCount: wellbeing.nutrition,
         stressCount: wellbeing.stress,
@@ -83,7 +83,7 @@ export function transformInsightsResponse(raw: any): IDashboardViewData {
     });
 
     const improvementRates = factorKeys.map((factor, index) => {
-        const rate = totalRecords > 0 ? Math.round((wellbeing[factor] / totalRecords) * 100) : 0;
+        const rate = totalEmployees > 0 ? Math.round((wellbeing[factor] / totalEmployees) * 100) : 0;
         return {
             factor: FACTOR_NAMES[factor],
             rate,

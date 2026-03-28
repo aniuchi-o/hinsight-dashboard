@@ -3,6 +3,7 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 
 // ── In-memory token storage (HIPAA-compliant — never localStorage) ───────
 let inMemoryAccessToken: string | null = null;
+let inMemoryTenantId: string | null = null;
 type DataRegion = 'CA' | 'US';
 
 const normalizeDataRegion = (region: unknown): DataRegion => {
@@ -17,6 +18,13 @@ export const setAccessToken = (token: string | null): void => {
 };
 
 export const getAccessToken = (): string | null => inMemoryAccessToken;
+
+// ── Tenant ID (from JWT `tid` claim) ─────────────────────────────────────
+export const setTenantId = (tenantId: string | null): void => {
+    inMemoryTenantId = tenantId;
+};
+
+export const getTenantId = (): string | null => inMemoryTenantId;
 
 // ── Data region (from JWT `reg` claim) ───────────────────────────────────
 let currentDataRegion: DataRegion = normalizeDataRegion(import.meta.env.VITE_DATA_REGION);
@@ -43,6 +51,13 @@ const createApiClient = (baseURL: string): AxiosInstance => {
             if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
             }
+            // Send tenant UUID so TenantMiddleware resolves the correct tenant.
+            // Without this the backend falls back to "default" and all
+            // tenant-scoped queries return empty results.
+            const tenantId = getTenantId();
+            if (tenantId) {
+                config.headers['X-Tenant-ID'] = tenantId;
+            }
             config.headers['X-Data-Region'] = currentDataRegion;
             config.headers['X-API-Key'] = API_KEY;
             config.headers['X-Correlation-ID'] = crypto.randomUUID();
@@ -65,6 +80,7 @@ const createApiClient = (baseURL: string): AxiosInstance => {
 
             if (status === 401) {
                 setAccessToken(null);
+                setTenantId(null);
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
             }
 
